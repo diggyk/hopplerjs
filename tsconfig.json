@@ -1,0 +1,13 @@
+{
+//    "files": [
+//        "./src/hopplerjs.ts",
+//        "./node_modules/@types/**/*"
+//    ],
+    "compilerOptions": {
+        "lib": ["dom", "es2015.promise", "es5"],
+        "module": "commonjs",
+        "target": "es5",
+        "noImplicitAny": true,
+        "sourceMap": true
+    }
+}
