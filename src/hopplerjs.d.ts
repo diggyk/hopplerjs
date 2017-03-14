@@ -1,6 +1,7 @@
 export interface IEvent {
     timestamp: number;
     sessionId: string;
+    siteName: string;
     timeOnPage: number;
     username: string;
     eventType: string;
@@ -8,6 +9,7 @@ export interface IEvent {
     pathname: string;
     search: string;
     inFocus: boolean;
+    timeAtFocusState: number;
     priorHostname?: string;
     priorPathname?: string;
     priorSearch?: string;
@@ -17,11 +19,13 @@ declare class Hoppler {
      * STATE VARIABLES
      */
     private username;
+    private siteName;
     private isFocused;
     private currentHostname;
     private currentPathname;
     private currentSearch;
     private pageArrival;
+    private focusStateTime;
     private sessionId;
     private eventCache;
     private lastFlush;
@@ -31,7 +35,7 @@ declare class Hoppler {
      */
     private pollerTimeout;
     private isFlushing;
-    constructor();
+    constructor(siteName: string);
     /**
      * Start or resume a session.  First, let's start tracking the current page.  Then, see if we
      * have a session stored in the session storage.  If so, we resume that session.  Else, we
@@ -40,10 +44,10 @@ declare class Hoppler {
     private startOrResumeSession;
     /**
      * Create an entry event and store it in the cache.
-     * @param eventType
-     * @param priorHostname
-     * @param priorPathname
-     * @param priorSearch
+     * @param eventType the type of event to create
+     * @param priorHostname (optional) the prior hostname if this is a page transition
+     * @param priorPathname (optional) the prior pathname if this is a page transition
+     * @param priorSearch (optional) the prior search if this is a page transition
      */
     private createEventEntry;
     /**
@@ -60,6 +64,11 @@ declare class Hoppler {
      * Create an entry when the page loses focus
      */
     private handleOnBlur;
+    /**
+     * Compress the number of events by getting rid of redundant "still-on-page" sequential events
+     * and rolling them up into on a single event with an accurate time summation
+     */
+    private compressEvents;
     private flushEventsToServer;
 }
 export { Hoppler };

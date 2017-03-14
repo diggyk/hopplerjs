@@ -3,6 +3,7 @@ import {generateSessionId} from "./utils";
 export interface IEvent {
     timestamp:number,
     sessionId:string,
+    siteName:string,
     timeOnPage:number,
     username:string,
     eventType:string,
@@ -10,6 +11,7 @@ export interface IEvent {
     pathname:string
     search:string,
     inFocus:boolean,
+    timeAtFocusState:number,
     priorHostname?:string,
     priorPathname?:string,
     priorSearch?:string,
@@ -30,11 +32,13 @@ class Hoppler {
      * STATE VARIABLES
      */
     private username:string = 'unknown';
+    private siteName:string;
     private isFocused:boolean;
     private currentHostname:string;
     private currentPathname:string;
     private currentSearch:string;
     private pageArrival:number;
+    private focusStateTime:number;
     private sessionId:string;
 
     private eventCache:Array<IEvent> = [];
@@ -47,8 +51,16 @@ class Hoppler {
     private pollerTimeout:number;
     private isFlushing:boolean;
 
-    constructor() {
-        console.log('Hoppler()');
+    constructor(siteName:string) {
+        console.log(`Hoppler(${siteName})`);
+
+        if (!siteName) {
+            console.error('Must specify site name when instantiating HopplerJS.');
+            return;
+        }
+
+        this.siteName = siteName;
+
         this.pollerTimeout = window.setInterval(this.masterPing, PING_FREQ * 1000);
 
         window.onfocus = this.handleOnFocus;
@@ -67,12 +79,18 @@ class Hoppler {
         this.currentPathname = window.location.pathname;
         this.currentSearch = window.location.search;
         this.pageArrival = new Date().getTime();
-        this.lastFlush = new Date().getTime();
+        this.focusStateTime = this.pageArrival;
+        this.lastFlush = this.pageArrival;
 
-        // load session id if found in localstorage/cookie
-        this.sessionId = sessionStorage.getItem('hplrSn');
+        // load session id if found in localstorage/cookie and is recent
         // else, create a store a new session id
-        if (!this.sessionId) {
+        this.sessionId = sessionStorage.getItem('hplrSn');
+        let sessionLastTimestamp = parseInt(sessionStorage.getItem('hplrLt'));
+        if (
+            !this.sessionId
+                || !sessionLastTimestamp
+                || this.pageArrival - sessionLastTimestamp > 300000
+        ) {
             this.sessionId = generateSessionId();
             console.log(`Creating a new session: ${this.sessionId}`);
             sessionStorage.setItem('hplrSn', this.sessionId);
@@ -105,28 +123,29 @@ class Hoppler {
 
         let timestamp = new Date().getTime();
         let timeOnPage = timestamp - this.pageArrival;
+        let timeAtFocusState = timestamp - this.focusStateTime;
 
         let event = {
-            timestamp,
-            timeOnPage,
             hostname,
             pathname,
-            search,
             priorHostname,
             priorPathname,
             priorSearch,
+            search,
+            timestamp,
+            timeOnPage,
+            timeAtFocusState,
             eventType: eventType,
-            username: this.username,
-            sessionId: this.sessionId,
             inFocus: this.isFocused,
+            sessionId: this.sessionId,
+            siteName: this.siteName,
+            username: this.username,
         };
 
         // track when this entry was created b/c we want entries every so often (KEEP_ALIVE_FREQ)
         this.lastEntry = timestamp;
 
         this.eventCache.push(event);
-
-        console.log(JSON.stringify(event, null, 4));
     };
 
     /**
@@ -162,14 +181,22 @@ class Hoppler {
      * Create an entry when the page gets focused
      */
     private handleOnFocus = () => {
-        if (!this.isFocused) this.createEventEntry('pageFocus');
+        // we only create an entry if didn't think the page had focus prior to this event
+        if (!this.isFocused) {
+            this.focusStateTime = new Date().getTime();
+            this.createEventEntry('pageFocus');
+        }
     };
 
     /**
      * Create an entry when the page loses focus
      */
     private handleOnBlur = () => {
-        if (this.isFocused) this.createEventEntry('pageBlur');
+        // we only create an entry if we thought the page had focus prior to this event
+        if (this.isFocused) {
+            this.focusStateTime = new Date().getTime();
+            this.createEventEntry('pageBlur');
+        }
     };
 
     /**
@@ -197,7 +224,8 @@ class Hoppler {
                 continue;
             } else {
                 // combine the time-on-page values
-                event.timeOnPage += nextEvent.timeOnPage;
+                event.timeOnPage = nextEvent.timeOnPage;
+                event.timeAtFocusState = nextEvent.timeAtFocusState;
 
                 // pull out and discard the next event (which we just combined into this one)
                 this.eventCache.splice(index, 1);
@@ -213,10 +241,10 @@ class Hoppler {
             return;
         }
 
-        console.log(`Flushing ${this.eventCache.length} events`);
         this.isFlushing = true;
-
         this.compressEvents();
+
+        console.log(`Flushing ${this.eventCache.length} events`);
 
         let flushCall = fetch('http://localhost:8000/events', {
                 method: 'POST',
@@ -228,11 +256,19 @@ class Hoppler {
                 body: JSON.stringify({events: this.eventCache})
             });
 
+        this.eventCache.forEach((e:IEvent) => {
+            console.log(e.timeOnPage);
+        });
+
         flushCall.then((response) => {
             console.log("Flushed");
             this.isFlushing = false;
             this.lastFlush = new Date().getTime();
             this.eventCache = [];
+
+            // store the last flush time in the local session so if the page is reloaded, we know
+            // how to tell if this session is still fresh or stale
+            sessionStorage.setItem('hplrLt', this.lastFlush.toString());
         }).catch(() => {
             console.log("Flushing failed");
             this.isFlushing = false;
@@ -248,7 +284,11 @@ let hoppler:Hoppler = null;
 try {
     if (_hplr !== undefined && 'autostart' in _hplr) {
         console.log("Detected HopplerJS autostart.");
-        let hoppler = new Hoppler();
+        if (_hplr['siteName']) {
+            hoppler = new Hoppler(_hplr['siteName']);
+        } else {
+            console.error('Must specify _hplr[\'siteName\'] to instantiate HopplerJS.');
+        }
     }
 } catch(e) {
     console.log("HopplerJS must be instantiated programmatically");

@@ -109,7 +109,7 @@ var PING_FREQ = 1;
 // how often we want to flush the cache to the Hoppler service (in seconds)
 var FLUSH_FREQ = 30;
 var Hoppler = (function () {
-    function Hoppler() {
+    function Hoppler(siteName) {
         var _this = this;
         /**
          * STATE VARIABLES
@@ -128,11 +128,15 @@ var Hoppler = (function () {
             _this.currentPathname = window.location.pathname;
             _this.currentSearch = window.location.search;
             _this.pageArrival = new Date().getTime();
-            _this.lastFlush = new Date().getTime();
-            // load session id if found in localstorage/cookie
-            _this.sessionId = sessionStorage.getItem('hplrSn');
+            _this.focusStateTime = _this.pageArrival;
+            _this.lastFlush = _this.pageArrival;
+            // load session id if found in localstorage/cookie and is recent
             // else, create a store a new session id
-            if (!_this.sessionId) {
+            _this.sessionId = sessionStorage.getItem('hplrSn');
+            var sessionLastTimestamp = parseInt(sessionStorage.getItem('hplrLt'));
+            if (!_this.sessionId
+                || !sessionLastTimestamp
+                || _this.pageArrival - sessionLastTimestamp > 300000) {
                 _this.sessionId = utils_1.generateSessionId();
                 console.log("Creating a new session: " + _this.sessionId);
                 sessionStorage.setItem('hplrSn', _this.sessionId);
@@ -162,24 +166,26 @@ var Hoppler = (function () {
             _this.isFocused = document.hasFocus();
             var timestamp = new Date().getTime();
             var timeOnPage = timestamp - _this.pageArrival;
+            var timeAtFocusState = timestamp - _this.focusStateTime;
             var event = {
-                timestamp: timestamp,
-                timeOnPage: timeOnPage,
                 hostname: hostname,
                 pathname: pathname,
-                search: search,
                 priorHostname: priorHostname,
                 priorPathname: priorPathname,
                 priorSearch: priorSearch,
+                search: search,
+                timestamp: timestamp,
+                timeOnPage: timeOnPage,
+                timeAtFocusState: timeAtFocusState,
                 eventType: eventType,
-                username: _this.username,
-                sessionId: _this.sessionId,
                 inFocus: _this.isFocused,
+                sessionId: _this.sessionId,
+                siteName: _this.siteName,
+                username: _this.username,
             };
             // track when this entry was created b/c we want entries every so often (KEEP_ALIVE_FREQ)
             _this.lastEntry = timestamp;
             _this.eventCache.push(event);
-            console.log(JSON.stringify(event, null, 4));
         };
         /**
          * This is the main function that gets pinged at the rate of PING_FREQ.  It will see if the page
@@ -209,15 +215,21 @@ var Hoppler = (function () {
          * Create an entry when the page gets focused
          */
         this.handleOnFocus = function () {
-            if (!_this.isFocused)
+            // we only create an entry if didn't think the page had focus prior to this event
+            if (!_this.isFocused) {
+                _this.focusStateTime = new Date().getTime();
                 _this.createEventEntry('pageFocus');
+            }
         };
         /**
          * Create an entry when the page loses focus
          */
         this.handleOnBlur = function () {
-            if (_this.isFocused)
+            // we only create an entry if we thought the page had focus prior to this event
+            if (_this.isFocused) {
+                _this.focusStateTime = new Date().getTime();
                 _this.createEventEntry('pageBlur');
+            }
         };
         /**
          * Compress the number of events by getting rid of redundant "still-on-page" sequential events
@@ -243,7 +255,8 @@ var Hoppler = (function () {
                 }
                 else {
                     // combine the time-on-page values
-                    event_1.timeOnPage += nextEvent.timeOnPage;
+                    event_1.timeOnPage = nextEvent.timeOnPage;
+                    event_1.timeAtFocusState = nextEvent.timeAtFocusState;
                     // pull out and discard the next event (which we just combined into this one)
                     _this.eventCache.splice(index, 1);
                     // NOTE: we do not update the index b/c we want to see if the new next event can be compressed
@@ -255,9 +268,9 @@ var Hoppler = (function () {
                 console.log('Do nothing (already flushing)');
                 return;
             }
-            console.log("Flushing " + _this.eventCache.length + " events");
             _this.isFlushing = true;
             _this.compressEvents();
+            console.log("Flushing " + _this.eventCache.length + " events");
             var flushCall = fetch('http://localhost:8000/events', {
                 method: 'POST',
                 headers: {
@@ -267,17 +280,28 @@ var Hoppler = (function () {
                 credentials: 'include',
                 body: JSON.stringify({ events: _this.eventCache })
             });
+            _this.eventCache.forEach(function (e) {
+                console.log(e.timeOnPage);
+            });
             flushCall.then(function (response) {
                 console.log("Flushed");
                 _this.isFlushing = false;
                 _this.lastFlush = new Date().getTime();
                 _this.eventCache = [];
+                // store the last flush time in the local session so if the page is reloaded, we know
+                // how to tell if this session is still fresh or stale
+                sessionStorage.setItem('hplrLt', _this.lastFlush.toString());
             }).catch(function () {
                 console.log("Flushing failed");
                 _this.isFlushing = false;
             });
         };
-        console.log('Hoppler()');
+        console.log("Hoppler(" + siteName + ")");
+        if (!siteName) {
+            console.error('Must specify site name when instantiating HopplerJS.');
+            return;
+        }
+        this.siteName = siteName;
         this.pollerTimeout = window.setInterval(this.masterPing, PING_FREQ * 1000);
         window.onfocus = this.handleOnFocus;
         window.onblur = this.handleOnBlur;
@@ -290,7 +314,12 @@ var hoppler = null;
 try {
     if (_hplr !== undefined && 'autostart' in _hplr) {
         console.log("Detected HopplerJS autostart.");
-        var hoppler_1 = new Hoppler();
+        if (_hplr['siteName']) {
+            hoppler = new Hoppler(_hplr['siteName']);
+        }
+        else {
+            console.error('Must specify _hplr[\'siteName\'] to instantiate HopplerJS.');
+        }
     }
 }
 catch (e) {

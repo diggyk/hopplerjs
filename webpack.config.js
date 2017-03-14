@@ -7,8 +7,8 @@ var webExport = {
         hopplerjs: path.resolve(__dirname, 'src/hopplerjs.ts'),
     },
     output: {
-        path: path.resolve(__dirname, './dist'),
-        filename: '[name].js',
+        path: path.resolve(__dirname),
+        filename: './dist/[name].js',
         // library: false,
         libraryTarget: 'umd',
     },
