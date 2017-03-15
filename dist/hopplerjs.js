@@ -109,7 +109,7 @@ var PING_FREQ = 1;
 // how often we want to flush the cache to the Hoppler service (in seconds)
 var FLUSH_FREQ = 30;
 var Hoppler = (function () {
-    function Hoppler(siteName) {
+    function Hoppler(config) {
         var _this = this;
         /**
          * STATE VARIABLES
@@ -265,13 +265,13 @@ var Hoppler = (function () {
         };
         this.flushEventsToServer = function () {
             if (_this.isFlushing) {
-                console.log('Do nothing (already flushing)');
+                // console.log('Do nothing (already flushing)');
                 return;
             }
             _this.isFlushing = true;
             _this.compressEvents();
-            console.log("Flushing " + _this.eventCache.length + " events");
-            var flushCall = fetch('http://localhost:8000/events', {
+            // console.log(`Flushing ${this.eventCache.length} events`);
+            var flushCall = fetch(_this.hopplerServer + "/events", {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -296,12 +296,17 @@ var Hoppler = (function () {
                 _this.isFlushing = false;
             });
         };
-        console.log("Hoppler(" + siteName + ")");
-        if (!siteName) {
+        console.log("Hoppler(" + config.siteName + ")");
+        if (!config.siteName) {
             console.error('Must specify site name when instantiating HopplerJS.');
             return;
         }
-        this.siteName = siteName;
+        this.siteName = config.siteName;
+        if (!config.server) {
+            console.error('Must specify URL to Hoppler API server.');
+            return;
+        }
+        this.hopplerServer = config.server;
         this.pollerTimeout = window.setInterval(this.masterPing, PING_FREQ * 1000);
         window.onfocus = this.handleOnFocus;
         window.onblur = this.handleOnBlur;
@@ -314,11 +319,15 @@ var hoppler = null;
 try {
     if (_hplr !== undefined && 'autostart' in _hplr) {
         console.log("Detected HopplerJS autostart.");
-        if (_hplr['siteName']) {
-            hoppler = new Hoppler(_hplr['siteName']);
+        if (_hplr['siteName'] && _hplr['server']) {
+            var config = {
+                siteName: _hplr['siteName'],
+                server: _hplr['server']
+            };
+            hoppler = new Hoppler(config);
         }
         else {
-            console.error('Must specify _hplr[\'siteName\'] to instantiate HopplerJS.');
+            console.error('Must specify _hplr[\'siteName\'] and _hplr[\'server\'] to instantiate HopplerJS.');
         }
     }
 }

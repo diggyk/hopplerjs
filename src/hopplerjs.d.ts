@@ -14,11 +14,16 @@ export interface IEvent {
     priorPathname?: string;
     priorSearch?: string;
 }
+export interface IConstructorOptions {
+    siteName: string;
+    server: string;
+}
 declare class Hoppler {
     /**
      * STATE VARIABLES
      */
     private username;
+    private hopplerServer;
     private siteName;
     private isFocused;
     private currentHostname;
@@ -35,7 +40,7 @@ declare class Hoppler {
      */
     private pollerTimeout;
     private isFlushing;
-    constructor(siteName: string);
+    constructor(config: IConstructorOptions);
     /**
      * Start or resume a session.  First, let's start tracking the current page.  Then, see if we
      * have a session stored in the session storage.  If so, we resume that session.  Else, we

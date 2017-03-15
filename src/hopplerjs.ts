@@ -17,6 +17,11 @@ export interface IEvent {
     priorSearch?:string,
 }
 
+export interface IConstructorOptions {
+    siteName: string,
+    server: string,
+}
+
 /** CONFIG VARIABLES **/
 // how often we create an entry when nothing of note has happened (in seconds)
 const KEEP_ALIVE_FREQ = 5;
@@ -32,6 +37,7 @@ class Hoppler {
      * STATE VARIABLES
      */
     private username:string = 'unknown';
+    private hopplerServer:string;
     private siteName:string;
     private isFocused:boolean;
     private currentHostname:string;
@@ -51,15 +57,20 @@ class Hoppler {
     private pollerTimeout:number;
     private isFlushing:boolean;
 
-    constructor(siteName:string) {
-        console.log(`Hoppler(${siteName})`);
+    constructor(config:IConstructorOptions) {
+        console.log(`Hoppler(${config.siteName})`);
 
-        if (!siteName) {
+        if (!config.siteName) {
             console.error('Must specify site name when instantiating HopplerJS.');
             return;
         }
+        this.siteName = config.siteName;
 
-        this.siteName = siteName;
+        if (!config.server) {
+            console.error('Must specify URL to Hoppler API server.');
+            return;
+        }
+        this.hopplerServer = config.server;
 
         this.pollerTimeout = window.setInterval(this.masterPing, PING_FREQ * 1000);
 
@@ -237,16 +248,16 @@ class Hoppler {
 
     private flushEventsToServer = () => {
         if (this.isFlushing) {
-            console.log('Do nothing (already flushing)');
+            // console.log('Do nothing (already flushing)');
             return;
         }
 
         this.isFlushing = true;
         this.compressEvents();
 
-        console.log(`Flushing ${this.eventCache.length} events`);
+        // console.log(`Flushing ${this.eventCache.length} events`);
 
-        let flushCall = fetch('http://localhost:8000/events', {
+        let flushCall = fetch(`${this.hopplerServer}/events`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -284,10 +295,16 @@ let hoppler:Hoppler = null;
 try {
     if (_hplr !== undefined && 'autostart' in _hplr) {
         console.log("Detected HopplerJS autostart.");
-        if (_hplr['siteName']) {
-            hoppler = new Hoppler(_hplr['siteName']);
+        if (_hplr['siteName'] && _hplr['server']) {
+            let config:IConstructorOptions = {
+                siteName: _hplr['siteName'],
+                server: _hplr['server']
+            };
+            hoppler = new Hoppler(config);
         } else {
-            console.error('Must specify _hplr[\'siteName\'] to instantiate HopplerJS.');
+            console.error(
+                'Must specify _hplr[\'siteName\'] and _hplr[\'server\'] to instantiate HopplerJS.'
+            );
         }
     }
 } catch(e) {
