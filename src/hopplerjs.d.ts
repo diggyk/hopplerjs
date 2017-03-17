@@ -17,6 +17,7 @@ export interface IEvent {
 export interface IConstructorOptions {
     siteName: string;
     server: string;
+    usernameHeader?: string;
 }
 declare class Hoppler {
     /**
@@ -32,6 +33,7 @@ declare class Hoppler {
     private pageArrival;
     private focusStateTime;
     private sessionId;
+    private usernameHeader;
     private eventCache;
     private lastFlush;
     private lastEntry;

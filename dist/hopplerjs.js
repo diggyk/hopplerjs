@@ -110,6 +110,7 @@ var PING_FREQ = 1;
 var FLUSH_FREQ = 30;
 var Hoppler = (function () {
     function Hoppler(config) {
+        // console.log(`Hoppler(${config.siteName})`);
         var _this = this;
         /**
          * STATE VARIABLES
@@ -138,16 +139,17 @@ var Hoppler = (function () {
                 || !sessionLastTimestamp
                 || _this.pageArrival - sessionLastTimestamp > 300000) {
                 _this.sessionId = utils_1.generateSessionId();
-                console.log("Creating a new session: " + _this.sessionId);
+                // console.log(`Creating a new session: ${this.sessionId}`);
                 sessionStorage.setItem('hplrSn', _this.sessionId);
                 _this.createEventEntry('sessionStart');
             }
             else {
-                console.log("Picking back up with session " + _this.sessionId);
+                // console.log(`Picking back up with session ${this.sessionId}`);
                 _this.createEventEntry('sessionResume');
             }
-            console.log(document.referrer);
-            console.log(document);
+            // console.log(document.referrer);
+            // console.log(document);
+            _this.flushEventsToServer();
         };
         /**
          * Create an entry event and store it in the cache.
@@ -271,7 +273,10 @@ var Hoppler = (function () {
             _this.isFlushing = true;
             _this.compressEvents();
             // console.log(`Flushing ${this.eventCache.length} events`);
-            var flushCall = fetch(_this.hopplerServer + "/events", {
+            var url = _this.hopplerServer + "/events";
+            if (_this.usernameHeader)
+                url += "?uh=" + _this.usernameHeader;
+            var flushCall = fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -280,11 +285,8 @@ var Hoppler = (function () {
                 credentials: 'include',
                 body: JSON.stringify({ events: _this.eventCache })
             });
-            _this.eventCache.forEach(function (e) {
-                console.log(e.timeOnPage);
-            });
             flushCall.then(function (response) {
-                console.log("Flushed");
+                // console.log("Flushed");
                 _this.isFlushing = false;
                 _this.lastFlush = new Date().getTime();
                 _this.eventCache = [];
@@ -292,11 +294,10 @@ var Hoppler = (function () {
                 // how to tell if this session is still fresh or stale
                 sessionStorage.setItem('hplrLt', _this.lastFlush.toString());
             }).catch(function () {
-                console.log("Flushing failed");
+                // console.log("Flushing failed");
                 _this.isFlushing = false;
             });
         };
-        console.log("Hoppler(" + config.siteName + ")");
         if (!config.siteName) {
             console.error('Must specify site name when instantiating HopplerJS.');
             return;
@@ -307,6 +308,8 @@ var Hoppler = (function () {
             return;
         }
         this.hopplerServer = config.server;
+        if (config.usernameHeader)
+            this.usernameHeader = config.usernameHeader;
         this.pollerTimeout = window.setInterval(this.masterPing, PING_FREQ * 1000);
         window.onfocus = this.handleOnFocus;
         window.onblur = this.handleOnBlur;
@@ -324,6 +327,8 @@ try {
                 siteName: _hplr['siteName'],
                 server: _hplr['server']
             };
+            if (_hplr['usernameHeader'])
+                config['usernameHeader'] = _hplr['usernameHeader'];
             hoppler = new Hoppler(config);
         }
         else {
@@ -332,7 +337,7 @@ try {
     }
 }
 catch (e) {
-    console.log("HopplerJS must be instantiated programmatically");
+    console.debug("HopplerJS must be instantiated programmatically");
 }
 
 
