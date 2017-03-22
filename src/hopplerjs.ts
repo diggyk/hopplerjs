@@ -53,6 +53,7 @@ class Hoppler {
     private eventCache:Array<IEvent> = [];
     private lastFlush:number = 0;
     private lastEntry:number = 0;
+    private flushRetries:number = 0;
 
     /**
      * Misc variables
@@ -63,19 +64,27 @@ class Hoppler {
     constructor(config:IConstructorOptions) {
         // console.log(`Hoppler(${config.siteName})`);
 
+        // ensure the identifying sitename is specified
         if (!config.siteName) {
             console.error('Must specify site name when instantiating HopplerJS.');
             return;
         }
         this.siteName = config.siteName;
 
+        // ensure the hoppler api server is specified
         if (!config.server) {
             console.error('Must specify URL to Hoppler API server.');
             return;
         }
         this.hopplerServer = config.server;
 
+        // see if we need to pass data on how to pull username from headers
         if (config.usernameHeader) this.usernameHeader = config.usernameHeader;
+
+        // set the document domain to the top level
+        let hostParts = location.hostname.split('.').reverse();
+        if (hostParts.length > 1)
+            document.domain = `${hostParts[1]}.${hostParts[0]}`;
 
         this.pollerTimeout = window.setInterval(this.masterPing, PING_FREQ * 1000);
 
@@ -100,8 +109,9 @@ class Hoppler {
 
         // load session id if found in localstorage/cookie and is recent
         // else, create a store a new session id
-        this.sessionId = sessionStorage.getItem('hplrSn');
-        let sessionLastTimestamp = parseInt(sessionStorage.getItem('hplrLt'));
+        this.sessionId = window.sessionStorage.getItem('hplrSn');
+        let sessionLastTimestamp = parseInt(window.sessionStorage.getItem('hplrLt'));
+        console.log(`${this.sessionId} ${sessionLastTimestamp}`);
         if (
             !this.sessionId
                 || !sessionLastTimestamp
@@ -109,7 +119,7 @@ class Hoppler {
         ) {
             this.sessionId = generateSessionId();
             // console.log(`Creating a new session: ${this.sessionId}`);
-            sessionStorage.setItem('hplrSn', this.sessionId);
+            window.sessionStorage.setItem('hplrSn', this.sessionId);
             this.createEventEntry('sessionStart');
         } else {
             // console.log(`Picking back up with session ${this.sessionId}`);
@@ -281,14 +291,18 @@ class Hoppler {
             // console.log("Flushed");
             this.isFlushing = false;
             this.lastFlush = new Date().getTime();
+            this.flushRetries = 0;
             this.eventCache = [];
 
             // store the last flush time in the local session so if the page is reloaded, we know
             // how to tell if this session is still fresh or stale
-            sessionStorage.setItem('hplrLt', this.lastFlush.toString());
+            window.sessionStorage.setItem('hplrLt', this.lastFlush.toString());
         }).catch(() => {
             // console.log("Flushing failed");
-            this.isFlushing = false;
+            setTimeout(() => {
+                this.flushRetries++;
+                this.isFlushing = false;
+            }, 10000 * (this.flushRetries < 30 ? this.flushRetries : 30));
         })
     }
 }
@@ -316,5 +330,5 @@ try {
         }
     }
 } catch(e) {
-    console.debug("HopplerJS must be instantiated programmatically");
+    console.log("HopplerJS must be instantiated programmatically");
 }

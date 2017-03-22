@@ -1,7 +1,7 @@
 {
   "name": "hopplerjs",
-  "version": "0.1.0",
-  "description": "Track user web hops between pages and web apps",
+  "version": "0.1.2",
+  "description": "WIP: Track user web hops between pages and web apps",
   "main": "./dist/hopplerjs.js",
   "typings": "./src/hopplerjs.d.ts",
   "author": "",

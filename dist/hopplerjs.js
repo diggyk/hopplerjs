@@ -119,6 +119,7 @@ var Hoppler = (function () {
         this.eventCache = [];
         this.lastFlush = 0;
         this.lastEntry = 0;
+        this.flushRetries = 0;
         /**
          * Start or resume a session.  First, let's start tracking the current page.  Then, see if we
          * have a session stored in the session storage.  If so, we resume that session.  Else, we
@@ -133,14 +134,15 @@ var Hoppler = (function () {
             _this.lastFlush = _this.pageArrival;
             // load session id if found in localstorage/cookie and is recent
             // else, create a store a new session id
-            _this.sessionId = sessionStorage.getItem('hplrSn');
-            var sessionLastTimestamp = parseInt(sessionStorage.getItem('hplrLt'));
+            _this.sessionId = window.sessionStorage.getItem('hplrSn');
+            var sessionLastTimestamp = parseInt(window.sessionStorage.getItem('hplrLt'));
+            console.log(_this.sessionId + " " + sessionLastTimestamp);
             if (!_this.sessionId
                 || !sessionLastTimestamp
                 || _this.pageArrival - sessionLastTimestamp > 300000) {
                 _this.sessionId = utils_1.generateSessionId();
                 // console.log(`Creating a new session: ${this.sessionId}`);
-                sessionStorage.setItem('hplrSn', _this.sessionId);
+                window.sessionStorage.setItem('hplrSn', _this.sessionId);
                 _this.createEventEntry('sessionStart');
             }
             else {
@@ -289,27 +291,38 @@ var Hoppler = (function () {
                 // console.log("Flushed");
                 _this.isFlushing = false;
                 _this.lastFlush = new Date().getTime();
+                _this.flushRetries = 0;
                 _this.eventCache = [];
                 // store the last flush time in the local session so if the page is reloaded, we know
                 // how to tell if this session is still fresh or stale
-                sessionStorage.setItem('hplrLt', _this.lastFlush.toString());
+                window.sessionStorage.setItem('hplrLt', _this.lastFlush.toString());
             }).catch(function () {
                 // console.log("Flushing failed");
-                _this.isFlushing = false;
+                setTimeout(function () {
+                    _this.flushRetries++;
+                    _this.isFlushing = false;
+                }, 10000 * (_this.flushRetries < 30 ? _this.flushRetries : 30));
             });
         };
+        // ensure the identifying sitename is specified
         if (!config.siteName) {
             console.error('Must specify site name when instantiating HopplerJS.');
             return;
         }
         this.siteName = config.siteName;
+        // ensure the hoppler api server is specified
         if (!config.server) {
             console.error('Must specify URL to Hoppler API server.');
             return;
         }
         this.hopplerServer = config.server;
+        // see if we need to pass data on how to pull username from headers
         if (config.usernameHeader)
             this.usernameHeader = config.usernameHeader;
+        // set the document domain to the top level
+        var hostParts = location.hostname.split('.').reverse();
+        if (hostParts.length > 1)
+            document.domain = hostParts[1] + "." + hostParts[0];
         this.pollerTimeout = window.setInterval(this.masterPing, PING_FREQ * 1000);
         window.onfocus = this.handleOnFocus;
         window.onblur = this.handleOnBlur;
@@ -337,7 +350,7 @@ try {
     }
 }
 catch (e) {
-    console.debug("HopplerJS must be instantiated programmatically");
+    console.log("HopplerJS must be instantiated programmatically");
 }
 
 

@@ -37,6 +37,7 @@ declare class Hoppler {
     private eventCache;
     private lastFlush;
     private lastEntry;
+    private flushRetries;
     /**
      * Misc variables
      */
