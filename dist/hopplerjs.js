@@ -321,7 +321,7 @@ var Hoppler = (function () {
             this.usernameHeader = config.usernameHeader;
         // set the document domain to the top level
         var hostParts = location.hostname.split('.').reverse();
-        if (hostParts.length > 1)
+        if (hostParts.length > 1 && !Number(hostParts[0]))
             document.domain = hostParts[1] + "." + hostParts[0];
         this.pollerTimeout = window.setInterval(this.masterPing, PING_FREQ * 1000);
         window.onfocus = this.handleOnFocus;
@@ -333,7 +333,7 @@ var Hoppler = (function () {
 exports.Hoppler = Hoppler;
 var hoppler = null;
 try {
-    if (_hplr !== undefined && 'autostart' in _hplr) {
+    if (_hplr !== undefined && 'autostart' in _hplr && _hplr['autostart']) {
         console.log("Detected HopplerJS autostart.");
         if (_hplr['siteName'] && _hplr['server']) {
             var config = {
@@ -350,7 +350,8 @@ try {
     }
 }
 catch (e) {
-    console.log("HopplerJS must be instantiated programmatically");
+    console.error("HopplerJS must be instantiated programmatically");
+    console.error(e);
 }
 
 
